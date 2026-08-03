@@ -1,8 +1,9 @@
-import { Cpu, Radio, VideoOff } from 'lucide-react';
+import { AlertTriangle, Cpu, Loader2, RefreshCw, Radio, VideoOff } from 'lucide-react';
 import type { SystemEvent } from '@/types';
+import { useMjpegStream, useStreamStatus } from '@/hooks';
 import { formatDateTime, formatRelative, humanise } from '@/utils/format';
 import { cn } from '@/utils/cn';
-import { Panel, PanelHeader, Skeleton } from '@/components/ui';
+import { Button, Panel, PanelHeader } from '@/components/ui';
 
 interface CameraPanelProps {
   events: SystemEvent[];
@@ -10,39 +11,64 @@ interface CameraPanelProps {
 }
 
 /**
- * Live pipeline / camera panel.
+ * Live annotated video feed.
  *
- * The platform exposes no video-streaming endpoint, so this deliberately
- * shows **no video**. Fabricating a feed would misrepresent a safety
- * system's actual coverage, which is the one thing an operator must be
- * able to trust. Instead the panel reports the real state of the capture
- * pipeline, derived from the system events the backend does publish.
+ * Renders the backend's MJPEG stream directly in an `<img>`; the
+ * browser decodes `multipart/x-mixed-replace` natively, so no
+ * client-side video code is involved. Connection lifecycle, backoff and
+ * reconnection live in `useMjpegStream`, leaving this component
+ * presentational.
  */
 export function CameraPanel({ events, isLoading = false }: CameraPanelProps) {
-  const status = derivePipelineStatus(events);
+  const stream = useMjpegStream({ fps: 15 });
+  const status = useStreamStatus();
+
+  const info = status.data;
+  const badge = describeConnection(stream.state, info?.available);
 
   return (
     <Panel className="overflow-hidden">
       <PanelHeader
-        title="Live Pipeline"
-        description="Capture and inference status"
+        title="Live Feed"
+        description="Annotated detection stream"
         icon={<Radio className="h-4 w-4" />}
         actions={
-          <span
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium',
-              status.tone,
-            )}
-          >
-            <span className={cn('h-1.5 w-1.5 rounded-full', status.dot)} />
-            {status.label}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium',
+                badge.tone,
+              )}
+            >
+              <span className="relative flex h-1.5 w-1.5">
+                {stream.state === 'live' ? (
+                  <span
+                    className={cn(
+                      'absolute inline-flex h-full w-full rounded-full opacity-70',
+                      badge.dot,
+                      'animate-pulse-ring',
+                    )}
+                  />
+                ) : null}
+                <span className={cn('relative inline-flex h-1.5 w-1.5 rounded-full', badge.dot)} />
+              </span>
+              {badge.label}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<RefreshCw className="h-3.5 w-3.5" />}
+              onClick={stream.reconnect}
+              aria-label="Reconnect stream"
+            >
+              <span className="sr-only sm:not-sr-only">Reconnect</span>
+            </Button>
+          </div>
         }
       />
 
       {/* Viewport */}
-      <div className="relative aspect-video w-full border-b border-surface-700/70 bg-surface-950">
-        {/* Alignment grid, purely decorative */}
+      <div className="relative aspect-video w-full overflow-hidden border-b border-surface-700/70 bg-surface-950">
         <div
           aria-hidden
           className="absolute inset-0 opacity-[0.18]"
@@ -53,137 +79,220 @@ export function CameraPanel({ events, isLoading = false }: CameraPanelProps) {
           }}
         />
 
-        <div className="absolute inset-0 grid place-items-center px-6 text-center">
-          {isLoading ? (
-            <Skeleton className="h-24 w-48" />
-          ) : (
-            <div className="max-w-sm">
-              <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl border border-surface-700 bg-surface-850 text-content-muted">
-                <VideoOff className="h-5 w-5" />
-              </span>
-              <p className="mt-3 text-sm font-semibold text-content-primary">
-                No video stream endpoint
-              </p>
-              <p className="mt-1.5 text-xs leading-relaxed text-content-muted">
-                The API exposes detections, tracks and alerts, but does not yet publish
-                frames. Add an MJPEG or WebRTC endpoint to render the live feed here.
-              </p>
-            </div>
-          )}
-        </div>
+        {stream.src ? (
+          <img
+            key={stream.src}
+            src={stream.src}
+            alt="Live annotated detection feed"
+            onLoad={stream.onLoad}
+            onError={stream.onError}
+            className={cn(
+              'absolute inset-0 h-full w-full object-contain transition-opacity duration-300',
+              stream.state === 'live' ? 'opacity-100' : 'opacity-0',
+            )}
+          />
+        ) : null}
+
+        {stream.state !== 'live' ? (
+          <div className="absolute inset-0 grid place-items-center px-6 text-center">
+            <StreamOverlay
+              state={stream.state}
+              attempt={stream.attempt}
+              retryInMs={stream.retryInMs}
+              detail={info?.error ?? null}
+              onRetry={stream.reconnect}
+            />
+          </div>
+        ) : null}
 
         {/* Corner registration marks */}
-        {(['left-3 top-3 border-l-2 border-t-2', 'right-3 top-3 border-r-2 border-t-2',
-           'left-3 bottom-3 border-l-2 border-b-2', 'right-3 bottom-3 border-r-2 border-b-2'] as const).map(
-          (position) => (
-            <span
-              key={position}
-              aria-hidden
-              className={cn('absolute h-4 w-4 border-surface-600', position)}
-            />
-          ),
-        )}
+        {(
+          [
+            'left-3 top-3 border-l-2 border-t-2',
+            'right-3 top-3 border-r-2 border-t-2',
+            'left-3 bottom-3 border-l-2 border-b-2',
+            'right-3 bottom-3 border-r-2 border-b-2',
+          ] as const
+        ).map((position) => (
+          <span
+            key={position}
+            aria-hidden
+            className={cn('absolute h-4 w-4 border-surface-600', position)}
+          />
+        ))}
       </div>
 
-      {/* Real pipeline facts, from system events */}
-      <dl className="grid grid-cols-2 divide-x divide-surface-700/60 border-b border-surface-700/60 sm:grid-cols-3 sm:divide-x">
-        <MetaCell label="Last pipeline event" value={status.lastEventLabel} hint={status.lastEventAt} />
-        <MetaCell label="Source" value={status.source ?? '—'} />
+      {/* Stream facts */}
+      <dl className="grid grid-cols-2 divide-x divide-surface-700/60 border-b border-surface-700/60 sm:grid-cols-4">
+        <MetaCell
+          label="Rate"
+          value={info?.publish_fps ? `${info.publish_fps.toFixed(1)} fps` : '—'}
+        />
+        <MetaCell
+          label="Resolution"
+          value={
+            info?.frame_width && info?.frame_height
+              ? `${info.frame_width}×${info.frame_height}`
+              : '—'
+          }
+        />
         <MetaCell
           label="Device"
-          value={status.device ?? '—'}
+          value={info?.device?.toUpperCase() ?? '—'}
           icon={<Cpu className="h-3 w-3" />}
-          className="col-span-2 sm:col-span-1"
         />
+        <MetaCell label="Viewers" value={info ? String(info.viewers) : '—'} />
       </dl>
+
+      <PipelineFooter events={events} isLoading={isLoading} />
     </Panel>
+  );
+}
+
+/** Overlay shown whenever the picture is not live. */
+function StreamOverlay({
+  state,
+  attempt,
+  retryInMs,
+  detail,
+  onRetry,
+}: {
+  state: 'connecting' | 'reconnecting' | 'error';
+  attempt: number;
+  retryInMs: number | null;
+  detail: string | null;
+  onRetry: () => void;
+}) {
+  if (state === 'error') {
+    return (
+      <div className="max-w-sm">
+        <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl border border-red-500/30 bg-red-500/10 text-red-300">
+          <VideoOff className="h-5 w-5" />
+        </span>
+        <p className="mt-3 text-sm font-semibold text-content-primary">Stream unavailable</p>
+        <p className="mt-1.5 text-xs leading-relaxed text-content-muted">
+          {detail ??
+            'The video source could not be reached after several attempts. Check that a camera or video file is configured for the backend.'}
+        </p>
+        <Button className="mt-4" variant="primary" icon={<RefreshCw className="h-4 w-4" />} onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
+  if (state === 'reconnecting') {
+    return (
+      <div className="max-w-sm">
+        <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300">
+          <AlertTriangle className="h-5 w-5" />
+        </span>
+        <p className="mt-3 text-sm font-semibold text-content-primary">Reconnecting…</p>
+        <p className="mt-1.5 text-xs text-content-muted">
+          Attempt {attempt}
+          {retryInMs ? ` · retrying in ${Math.round(retryInMs / 1000)}s` : ''}
+        </p>
+        <Button className="mt-4" size="sm" variant="secondary" onClick={onRetry}>
+          Retry now
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-sm">
+      <Loader2 className="mx-auto h-7 w-7 animate-spin text-accent" />
+      <p className="mt-3 text-sm font-semibold text-content-primary">Connecting to feed…</p>
+      <p className="mt-1.5 text-xs text-content-muted">
+        Starting the capture pipeline and loading the detection model.
+      </p>
+    </div>
   );
 }
 
 function MetaCell({
   label,
   value,
-  hint,
   icon,
-  className,
 }: {
   label: string;
   value: string;
-  hint?: string;
   icon?: React.ReactNode;
-  className?: string;
 }) {
   return (
-    <div className={cn('px-5 py-3.5', className)}>
+    <div className="px-4 py-3">
       <dt className="text-[11px] uppercase tracking-wider text-content-muted">{label}</dt>
-      <dd className="mt-1 flex items-center gap-1.5 truncate text-xs text-content-primary">
+      <dd className="mt-1 flex items-center gap-1.5 truncate font-mono text-xs text-content-primary">
         {icon}
-        <span className="truncate font-mono">{value}</span>
+        <span className="truncate">{value}</span>
       </dd>
-      {hint ? <p className="mt-0.5 truncate text-[11px] text-content-muted">{hint}</p> : null}
     </div>
   );
 }
 
-interface PipelineStatus {
-  label: string;
-  tone: string;
-  dot: string;
-  lastEventLabel: string;
-  lastEventAt?: string;
-  source: string | null;
-  device: string | null;
-}
+/** Latest pipeline-related system event, for context beneath the feed. */
+function PipelineFooter({
+  events,
+  isLoading,
+}: {
+  events: SystemEvent[];
+  isLoading: boolean;
+}) {
+  const latest = events.find((event) => /pipeline|camera|frame|model|zone/i.test(event.event_type));
 
-/**
- * Infer capture state from the most recent pipeline-related events.
- *
- * Only facts the backend actually reported are used; anything unknown
- * stays blank rather than being guessed at.
- */
-function derivePipelineStatus(events: SystemEvent[]): PipelineStatus {
-  const pipelineEvents = events.filter((event) =>
-    /pipeline|camera|frame|model|zone/i.test(event.event_type),
-  );
-  const latest = pipelineEvents[0] ?? events[0];
-
-  const started = pipelineEvents.find((event) => /started/i.test(event.event_type));
-  const dropped = pipelineEvents.find((event) => /drop|fail|lost/i.test(event.event_type));
-
-  const device =
-    (started?.metadata?.device as string | undefined) ??
-    (latest?.metadata?.device as string | undefined) ??
-    null;
-
-  const stopped = pipelineEvents.find((event) => /stopped|shutdown/i.test(event.event_type));
-
-  let label = 'Unknown';
-  let tone = 'border-surface-600 bg-surface-700/40 text-content-muted';
-  let dot = 'bg-slate-400';
-
-  if (stopped) {
-    label = 'Stopped';
-    tone = 'border-surface-600 bg-surface-700/40 text-content-muted';
-    dot = 'bg-slate-400';
-  } else if (dropped) {
-    label = 'Degraded';
-    tone = 'border-amber-500/30 bg-amber-500/10 text-amber-300';
-    dot = 'bg-amber-400';
-  } else if (started) {
-    label = 'Running';
-    tone = 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300';
-    dot = 'bg-emerald-400';
+  if (isLoading) {
+    return (
+      <div className="px-5 py-3">
+        <p className="text-[11px] text-content-muted">Loading pipeline events…</p>
+      </div>
+    );
   }
 
-  return {
-    label,
-    tone,
-    dot,
-    lastEventLabel: latest ? humanise(latest.event_type) : 'No events recorded',
-    lastEventAt: latest
-      ? `${formatRelative(latest.occurred_at)} · ${formatDateTime(latest.occurred_at)}`
-      : undefined,
-    source: latest?.source ?? null,
-    device,
-  };
+  if (!latest) return null;
+
+  return (
+    <div className="px-5 py-3">
+      <p className="truncate text-[11px] text-content-muted">
+        <span className="text-content-secondary">{humanise(latest.event_type)}</span>
+        {' · '}
+        <span title={formatDateTime(latest.occurred_at)}>
+          {formatRelative(latest.occurred_at)}
+        </span>
+        {latest.source ? <span className="font-mono"> · {latest.source}</span> : null}
+      </p>
+    </div>
+  );
+}
+
+/** Map connection state onto badge copy and colour. */
+function describeConnection(
+  state: 'connecting' | 'live' | 'reconnecting' | 'error',
+  available: boolean | undefined,
+): { label: string; tone: string; dot: string } {
+  switch (state) {
+    case 'live':
+      return {
+        label: 'Live',
+        tone: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+        dot: 'bg-emerald-400',
+      };
+    case 'reconnecting':
+      return {
+        label: 'Reconnecting',
+        tone: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+        dot: 'bg-amber-400',
+      };
+    case 'error':
+      return {
+        label: 'Offline',
+        tone: 'border-red-500/30 bg-red-500/10 text-red-300',
+        dot: 'bg-red-400',
+      };
+    default:
+      return {
+        label: available === false ? 'Starting' : 'Connecting',
+        tone: 'border-surface-600 bg-surface-700/40 text-content-muted',
+        dot: 'bg-slate-400',
+      };
+  }
 }

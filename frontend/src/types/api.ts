@@ -224,3 +224,22 @@ export interface SystemEventQuery extends PaginationQuery, SortQuery, TimeRangeQ
   source?: string;
   search?: string;
 }
+
+/** Live video stream status, from `GET /stream/status`. */
+export interface StreamStatus {
+  available: boolean;
+  running: boolean;
+  auto_start: boolean;
+  viewers: number;
+  frames_published: number;
+  frames_encoded: number;
+  publish_fps: number;
+  last_frame_age: number | null;
+  frame_width: number | null;
+  frame_height: number | null;
+  jpeg_quality: number;
+  device: string | null;
+  source: string;
+  uptime: number | null;
+  error: string | null;
+}

@@ -285,3 +285,35 @@ class AlertAcknowledgeRequest(BaseModel):
         max_length=128,
         description="Identifier of the operator acknowledging the alert.",
     )
+
+
+class StreamStatusResponse(BaseModel):
+    """Live video stream status."""
+
+    available: bool = Field(
+        description="Whether a recent frame is available to stream."
+    )
+    running: bool = Field(description="Whether the capture pipeline thread is alive.")
+    auto_start: bool = Field(
+        description="Whether the stream starts automatically for a new viewer."
+    )
+    viewers: int = Field(description="Currently connected MJPEG clients.")
+    frames_published: int = Field(description="Frames produced since start.")
+    frames_encoded: int = Field(
+        description="Frames encoded to JPEG; lower than published when unwatched."
+    )
+    publish_fps: float = Field(description="Recent frame production rate.")
+    last_frame_age: Optional[float] = Field(
+        default=None, description="Seconds since the most recent frame."
+    )
+    frame_width: Optional[int] = Field(default=None, description="Frame width, pixels.")
+    frame_height: Optional[int] = Field(default=None, description="Frame height, pixels.")
+    jpeg_quality: int = Field(description="JPEG quality currently in use.")
+    device: Optional[str] = Field(default=None, description="Inference device in use.")
+    source: str = Field(description="Configured video source.")
+    uptime: Optional[float] = Field(
+        default=None, description="Seconds since the stream started."
+    )
+    error: Optional[str] = Field(
+        default=None, description="Most recent stream failure, if any."
+    )

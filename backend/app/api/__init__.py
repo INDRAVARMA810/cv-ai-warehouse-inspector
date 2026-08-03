@@ -15,7 +15,7 @@ through :mod:`app.database.repositories`.
 from fastapi import APIRouter
 
 from app.api.exceptions import register_exception_handlers
-from app.api.routers import alerts, health, system, tracks, violations
+from app.api.routers import alerts, health, stream, system, tracks, violations
 
 #: Prefix applied to every versioned endpoint. Versioning the path from
 #: the outset means a future breaking change can ship alongside the
@@ -28,5 +28,6 @@ api_router.include_router(alerts.router)
 api_router.include_router(violations.router)
 api_router.include_router(tracks.router)
 api_router.include_router(system.router)
+api_router.include_router(stream.router)
 
 __all__ = ["api_router", "API_PREFIX", "register_exception_handlers"]
