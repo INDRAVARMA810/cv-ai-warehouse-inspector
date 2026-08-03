@@ -292,3 +292,16 @@ $RECYCLE.BIN/
 *.zip
 *.tar.gz
 *.rar
+
+# ---------------------------------------------------------
+# Node / frontend
+# ---------------------------------------------------------
+node_modules/
+*.tsbuildinfo
+.vite/
+frontend/dist/
+
+# Demo footage generated for container testing
+videos/*.mp4
+videos/*.avi
+!videos/.gitkeep

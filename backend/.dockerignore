@@ -1,0 +1,43 @@
+# Virtual environments — never ship the host's interpreter
+venv/
+.venv/
+env/
+ENV/
+
+# Python caches and build artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime output that must not leak into an image
+logs/
+*.log
+.env
+.env.*
+!.env.example
+
+# Model weights are large and are fetched or mounted at runtime
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Local databases and dumps
+*.db
+*.sqlite3
+*.dump
+
+# Editor and OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docker files themselves
+Dockerfile
+.dockerignore

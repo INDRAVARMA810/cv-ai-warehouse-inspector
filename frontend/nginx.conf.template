@@ -1,0 +1,134 @@
+# =====================================================================
+# Dashboard web server and API reverse proxy.
+#
+# Serving the bundle and the API from one origin removes the need for
+# CORS on the backend and lets the dashboard keep using relative URLs,
+# exactly as it does behind the Vite dev proxy.
+#
+# Rendered from this template at container start; ${BACKEND_HOST} and
+# ${BACKEND_PORT} come from the environment.
+# =====================================================================
+
+upstream backend_api {
+    server ${BACKEND_HOST}:${BACKEND_PORT};
+    keepalive 16;
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Uploads are not part of this API; keep the body limit small.
+    client_max_body_size 2m;
+
+    # ---------------------------------------------------------------
+    # Container healthcheck target. Answered locally so it stays green
+    # even while the backend is still starting.
+    # ---------------------------------------------------------------
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 'ok';
+    }
+
+    # ---------------------------------------------------------------
+    # Live MJPEG stream.
+    #
+    # Declared before the general /api/ rule because it needs the
+    # opposite buffering behaviour. `multipart/x-mixed-replace` is an
+    # infinite response: with proxy_buffering on, nginx accumulates
+    # frames until its buffer fills, so the picture arrives in stutters
+    # or appears frozen. Buffering is disabled and the read timeout
+    # raised so a long-lived stream is never cut off mid-connection.
+    # ---------------------------------------------------------------
+    location ~ ^/api/v1/stream/(live|snapshot) {
+        proxy_pass http://backend_api;
+        proxy_http_version 1.1;
+
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_request_buffering off;
+        chunked_transfer_encoding off;
+
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # A stream legitimately sends nothing between frames; these must
+        # exceed any plausible gap or nginx will drop viewers.
+        proxy_read_timeout 24h;
+        proxy_send_timeout 24h;
+        proxy_connect_timeout 10s;
+    }
+
+    # ---------------------------------------------------------------
+    # Regular JSON API
+    # ---------------------------------------------------------------
+    location /api/ {
+        proxy_pass http://backend_api;
+        proxy_http_version 1.1;
+
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
+    # OpenAPI documentation, proxied for convenience.
+    location ~ ^/(docs|redoc|openapi.json) {
+        proxy_pass http://backend_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # ---------------------------------------------------------------
+    # Static assets
+    #
+    # Vite emits content-hashed filenames, so bundles can be cached
+    # indefinitely. index.html must not be, or clients would keep
+    # loading a stale entry point after a deploy.
+    # ---------------------------------------------------------------
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+        try_files $uri =404;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires 0;
+    }
+
+    # Single-page app: unknown paths are client-side routes, so they
+    # fall back to the entry point rather than 404ing.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ---------------------------------------------------------------
+    # Baseline security headers
+    # ---------------------------------------------------------------
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    # JPEG is already compressed; re-compressing the stream would waste
+    # CPU on every frame for no size benefit.
+    gzip_proxied off;
+}

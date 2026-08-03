@@ -1,0 +1,28 @@
+# =====================================================================
+# GPU overlay.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# Requires the NVIDIA Container Toolkit on the host. Without this
+# overlay the stack runs on CPU with no configuration change, because
+# the application selects its device at runtime.
+# =====================================================================
+
+services:
+  backend:
+    build:
+      args:
+        # CUDA 12.1 wheels. Match this to the host driver.
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu121
+    image: warehouse-safety/backend:gpu
+    environment:
+      STREAM_DEVICE: cuda
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

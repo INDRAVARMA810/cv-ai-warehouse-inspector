@@ -1,0 +1,26 @@
+# Dependencies are installed inside the image
+node_modules/
+
+# Build output — produced by the build stage
+dist/
+build/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Caches
+.vite/
+.cache/
+*.tsbuildinfo
+
+# Editor and OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docker files themselves
+Dockerfile
+.dockerignore

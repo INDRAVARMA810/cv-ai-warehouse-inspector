@@ -1,0 +1,69 @@
+# =====================================================================
+# Root build context filter (backend image).
+#
+# The backend image is built from the repository root because
+# requirements.txt lives there. Everything the image does not need is
+# excluded here — without this the context would include the host
+# virtualenv and node_modules, adding gigabytes to every build.
+# =====================================================================
+
+# Host virtualenv — never ship the host's interpreter
+venv/
+.venv/
+env/
+ENV/
+
+# Frontend has its own image and its own context
+frontend/
+node_modules/
+
+# Version control and CI
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# Python caches and build artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime output and secrets
+logs/
+*.log
+.env
+.env.*
+!.env.example
+
+# Model weights — downloaded or mounted at runtime
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Bulk data that is mounted, not baked in
+datasets/
+videos/
+screenshots/
+notebooks/
+docs/
+ai_models/
+
+# Local databases and dumps
+*.db
+*.sqlite3
+*.dump
+
+# Docker and editor files
+docker-compose*.yml
+Dockerfile
+.dockerignore
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

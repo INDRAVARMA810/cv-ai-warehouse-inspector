@@ -1,0 +1,194 @@
+# =====================================================================
+# AI Warehouse Safety Inspector — full stack
+#
+#   docker compose up -d --build
+#   Dashboard  http://localhost:8080
+#   API docs   http://localhost:8080/docs
+#
+# GPU inference is opt-in and requires the NVIDIA container runtime:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Without it the backend falls back to CPU on its own — the application
+# already selects its device at runtime.
+# =====================================================================
+
+name: warehouse-safety
+
+services:
+  # -------------------------------------------------------------------
+  # PostgreSQL
+  # -------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: warehouse-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-warehouse_ai}
+      # Keeps the data directory one level down, so a mounted volume
+      # containing lost+found does not stop initdb.
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Any .sql or .sh placed here runs once, on first initialisation
+      # of an empty data directory.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+
+    # Bound to loopback: the database is reachable from the host for
+    # inspection, but is not exposed on the network interface.
+    ports:
+      - "${POSTGRES_PORT:-127.0.0.1:5432}:5432"
+
+    networks:
+      - backend_net
+
+    healthcheck:
+      # -q suppresses output; the exit status is what compose reads.
+      test: ["CMD-SHELL", "pg_isready -q -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-warehouse_ai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+    stop_grace_period: 30s
+
+  # -------------------------------------------------------------------
+  # FastAPI backend + detection pipeline
+  # -------------------------------------------------------------------
+  backend:
+    build:
+      # Repo root: requirements.txt lives there, not under backend/.
+      # Filtered by the root .dockerignore.
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        # Override with a CUDA index to build a GPU image.
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    image: warehouse-safety/backend:latest
+    container_name: warehouse-backend
+    restart: unless-stopped
+
+    environment:
+      # psycopg 3 is the installed driver; the URL names it explicitly
+      # so SQLAlchemy does not fall back to psycopg2.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-warehouse_ai}
+
+      APP_NAME: ${APP_NAME:-AI Warehouse Safety Inspector}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+      DB_POOL_PRE_PING: "true"
+
+      # Container startup behaviour (see docker-entrypoint.sh).
+      WAIT_FOR_DB: ${WAIT_FOR_DB:-90}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+
+      # Live stream. STREAM_SOURCE is a webcam index or a path *inside
+      # the container* — mount host footage via the videos volume below.
+      STREAM_SOURCE: ${STREAM_SOURCE:-0}
+      STREAM_WEIGHTS: ${STREAM_WEIGHTS:-yolov8n.pt}
+      STREAM_DEVICE: ${STREAM_DEVICE:-}
+      STREAM_WIDTH: ${STREAM_WIDTH:-960}
+      STREAM_HEIGHT: ${STREAM_HEIGHT:-540}
+      STREAM_AUTO_START: ${STREAM_AUTO_START:-true}
+      STREAM_IDLE_STOP: ${STREAM_IDLE_STOP:-60}
+
+    volumes:
+      # Persist downloaded model weights so a restart does not re-fetch
+      # them from the internet.
+      - model_cache:/app/.cache
+      - model_weights:/app/models
+      # Read-only host footage for demos and for hosts with no camera.
+      - ./videos:/app/videos:ro
+
+    # Not published: the dashboard proxies the API, so the backend does
+    # not need its own host port. Uncomment to reach it directly.
+    # ports:
+    #   - "127.0.0.1:8000:8000"
+
+    networks:
+      - backend_net
+      - frontend_net
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=4).status==200 else 1)"]
+      interval: 20s
+      timeout: 8s
+      retries: 5
+      # Generous: the first start may download model weights and load
+      # Torch, which takes far longer than a normal boot.
+      start_period: 120s
+
+    # The pipeline holds a camera and worker threads; give it time to
+    # release them rather than being killed mid-frame.
+    stop_grace_period: 30s
+
+  # -------------------------------------------------------------------
+  # React dashboard (nginx)
+  # -------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Relative by default so the bundle calls its own origin and
+        # nginx proxies onward — no rebuild needed to move the backend.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+    image: warehouse-safety/frontend:latest
+    container_name: warehouse-frontend
+    restart: unless-stopped
+
+    environment:
+      BACKEND_HOST: backend
+      BACKEND_PORT: "8000"
+
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+
+    networks:
+      - frontend_net
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/healthz"]
+      interval: 20s
+      timeout: 4s
+      retries: 3
+      start_period: 10s
+
+# ---------------------------------------------------------------------
+# Networks
+#
+# Split so the database is only reachable from the backend. The frontend
+# sits on frontend_net and has no route to postgres at all.
+# ---------------------------------------------------------------------
+networks:
+  backend_net:
+    driver: bridge
+    internal: false
+  frontend_net:
+    driver: bridge
+
+# ---------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+  model_cache:
+    driver: local
+  model_weights:
+    driver: local
