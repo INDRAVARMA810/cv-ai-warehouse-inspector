@@ -11,7 +11,7 @@ future appearance-based engine (DeepSORT, StrongSORT) would add one.
 """
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -74,9 +74,13 @@ class _DetectionAdapter:
     """Adapts detection arrays to the interface ``BYTETracker`` expects.
 
     Ultralytics' tracker reads ``.conf``, ``.xywh``, and ``.cls`` off a
-    ``Boxes``-like object. This exposes exactly those attributes over
-    plain NumPy arrays, avoiding a dependency on Ultralytics' result
-    types.
+    ``Boxes``-like object, and splits detections into high- and
+    low-confidence subsets by indexing that object with a boolean mask.
+    This exposes exactly that surface over plain NumPy arrays, avoiding
+    a dependency on Ultralytics' result types.
+
+    Note that ``xywhr`` is deliberately **not** defined: Ultralytics
+    treats its presence as a signal that the boxes are oriented (OBB).
     """
 
     def __init__(self, boxes_cxcywh: np.ndarray, scores: np.ndarray, class_ids: np.ndarray) -> None:
@@ -94,6 +98,21 @@ class _DetectionAdapter:
     def __len__(self) -> int:
         """Return the number of detections held."""
         return len(self.conf)
+
+    def __getitem__(self, mask: np.ndarray) -> "_DetectionAdapter":
+        """Return the subset of detections selected by a boolean mask.
+
+        ``BYTETracker`` splits detections by confidence via
+        ``results[mask]``, so the adapter must support indexing and
+        return the same interface.
+
+        Args:
+            mask: Boolean array of shape ``(N,)`` selecting detections.
+
+        Returns:
+            A new adapter holding only the selected detections.
+        """
+        return _DetectionAdapter(self.xywh[mask], self.conf[mask], self.cls[mask])
 
 
 class ByteTrackEngine:
@@ -143,8 +162,19 @@ class ByteTrackEngine:
                 "`pip install ultralytics` to enable ByteTrack tracking."
             ) from _IMPORT_ERROR
 
+        # Ultralytics' BYTETracker takes only ``args`` and reads its
+        # lost-track window straight from ``args.track_buffer``. Scale
+        # that buffer by the source frame rate here — as upstream once
+        # did internally — so ``track_buffer`` keeps its documented
+        # meaning of "frames at a 30 fps reference rate" and
+        # ``frame_rate`` stays functional rather than silently ignored.
+        scaled_config = replace(
+            self.config,
+            track_buffer=max(1, int(self.frame_rate / 30.0 * self.config.track_buffer)),
+        )
+
         try:
-            self._tracker = BYTETracker(args=self.config, frame_rate=self.frame_rate)
+            self._tracker = BYTETracker(scaled_config)
         except Exception as exc:
             raise TrackerInitializationError(
                 f"Failed to initialize ByteTrack: {exc}"
