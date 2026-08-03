@@ -126,9 +126,14 @@ class BaseRepository(Generic[ModelT]):
     Attributes:
         session: The session this repository operates within.
         model: The mapped class this repository manages.
+        sortable_fields: Public sort keys mapped to model attribute
+            names. Sorting is restricted to this allowlist so callers
+            can pass a plain string without the data layer accepting an
+            arbitrary column name.
     """
 
     model: Type[ModelT]
+    sortable_fields: Dict[str, str] = {}
 
     def __init__(self, session: Session) -> None:
         """Bind the repository to a session.
@@ -446,6 +451,32 @@ class BaseRepository(Generic[ModelT]):
 
         return statement
 
+    def resolve_sort(self, sort_by: Optional[str]) -> Optional[Any]:
+        """Translate a public sort key into a model column.
+
+        Args:
+            sort_by: The requested sort key, or ``None``.
+
+        Returns:
+            The matching column, or ``None`` to fall back to the
+            repository's default ordering. Unknown keys are rejected
+            rather than passed through, so a caller cannot sort by an
+            arbitrary attribute.
+        """
+        if not sort_by:
+            return None
+
+        attribute = self.sortable_fields.get(sort_by)
+
+        if attribute is None:
+            logger.warning(
+                f"Ignoring unsupported sort key '{sort_by}' for "
+                f"{self.model.__name__}; using default ordering."
+            )
+            return None
+
+        return getattr(self.model, attribute, None)
+
     def _apply_ordering(
         self, statement: Select, order_by: Optional[Any], descending: bool
     ) -> Select:
@@ -467,6 +498,16 @@ class AlertRepository(BaseRepository[AlertRecord]):
     """Persistence for safety alerts."""
 
     model = AlertRecord
+    sortable_fields = {
+        "occurred_at": "occurred_at",
+        "level": "level",
+        "status": "status",
+        "rule_name": "rule_name",
+        "category": "category",
+        "track_id": "track_id",
+        "occurrence_count": "occurrence_count",
+        "created_at": "created_at",
+    }
 
     @staticmethod
     def to_values(alert: Any) -> Dict[str, Any]:
@@ -626,13 +667,18 @@ class AlertRepository(BaseRepository[AlertRecord]):
         self,
         page: int = 1,
         page_size: int = 50,
+        sort_by: Optional[str] = None,
+        descending: bool = True,
         **criteria: Any,
     ) -> Page[AlertRecord]:
-        """Return a filtered, paginated page of alerts, newest first.
+        """Return a filtered, paginated page of alerts.
 
         Args:
             page: 1-based page number.
             page_size: Rows per page.
+            sort_by: Sort key from :attr:`sortable_fields`. Defaults to
+                the time the alert occurred.
+            descending: Whether to sort descending.
             **criteria: Any argument accepted by :meth:`build_query`.
 
         Returns:
@@ -641,8 +687,8 @@ class AlertRepository(BaseRepository[AlertRecord]):
         return self.paginate(
             page=page,
             page_size=page_size,
-            order_by=AlertRecord.occurred_at,
-            descending=True,
+            order_by=self.resolve_sort(sort_by) or AlertRecord.occurred_at,
+            descending=descending,
             statement=self.build_query(**criteria),
         )
 
@@ -759,6 +805,13 @@ class ViolationRepository(BaseRepository[ViolationRecord]):
     """Persistence for individual rule violations."""
 
     model = ViolationRecord
+    sortable_fields = {
+        "occurred_at": "occurred_at",
+        "severity": "severity",
+        "rule_name": "rule_name",
+        "track_id": "track_id",
+        "created_at": "created_at",
+    }
 
     @staticmethod
     def to_values(violation: Any, alert_id: Optional[str] = None) -> Dict[str, Any]:
@@ -864,13 +917,21 @@ class ViolationRepository(BaseRepository[ViolationRecord]):
         return statement
 
     def search(
-        self, page: int = 1, page_size: int = 50, **criteria: Any
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        sort_by: Optional[str] = None,
+        descending: bool = True,
+        **criteria: Any,
     ) -> Page[ViolationRecord]:
-        """Return a filtered, paginated page of violations, newest first.
+        """Return a filtered, paginated page of violations.
 
         Args:
             page: 1-based page number.
             page_size: Rows per page.
+            sort_by: Sort key from :attr:`sortable_fields`. Defaults to
+                the time the violation occurred.
+            descending: Whether to sort descending.
             **criteria: Any argument accepted by :meth:`build_query`.
 
         Returns:
@@ -879,8 +940,8 @@ class ViolationRepository(BaseRepository[ViolationRecord]):
         return self.paginate(
             page=page,
             page_size=page_size,
-            order_by=ViolationRecord.occurred_at,
-            descending=True,
+            order_by=self.resolve_sort(sort_by) or ViolationRecord.occurred_at,
+            descending=descending,
             statement=self.build_query(**criteria),
         )
 
@@ -915,6 +976,15 @@ class TrackRepository(BaseRepository[TrackRecord]):
     """Persistence for tracked-object lifetimes."""
 
     model = TrackRecord
+    sortable_fields = {
+        "first_seen": "first_seen",
+        "last_seen": "last_seen",
+        "track_id": "track_id",
+        "class_name": "class_name",
+        "confidence": "confidence",
+        "observation_count": "observation_count",
+        "created_at": "created_at",
+    }
 
     @staticmethod
     def to_values(tracked_object: Any) -> Dict[str, Any]:
@@ -1018,13 +1088,21 @@ class TrackRepository(BaseRepository[TrackRecord]):
         return statement
 
     def search(
-        self, page: int = 1, page_size: int = 50, **criteria: Any
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        sort_by: Optional[str] = None,
+        descending: bool = True,
+        **criteria: Any,
     ) -> Page[TrackRecord]:
-        """Return a filtered, paginated page of tracks, newest first.
+        """Return a filtered, paginated page of tracks.
 
         Args:
             page: 1-based page number.
             page_size: Rows per page.
+            sort_by: Sort key from :attr:`sortable_fields`. Defaults to
+                when the track was first seen.
+            descending: Whether to sort descending.
             **criteria: Any argument accepted by :meth:`build_query`.
 
         Returns:
@@ -1033,8 +1111,8 @@ class TrackRepository(BaseRepository[TrackRecord]):
         return self.paginate(
             page=page,
             page_size=page_size,
-            order_by=TrackRecord.first_seen,
-            descending=True,
+            order_by=self.resolve_sort(sort_by) or TrackRecord.first_seen,
+            descending=descending,
             statement=self.build_query(**criteria),
         )
 
@@ -1056,6 +1134,13 @@ class SystemRepository(BaseRepository[SystemEvent]):
     """Persistence for system-level operational events."""
 
     model = SystemEvent
+    sortable_fields = {
+        "occurred_at": "occurred_at",
+        "event_type": "event_type",
+        "level": "level",
+        "source": "source",
+        "created_at": "created_at",
+    }
 
     def log_event(
         self,
@@ -1135,13 +1220,21 @@ class SystemRepository(BaseRepository[SystemEvent]):
         return statement
 
     def search(
-        self, page: int = 1, page_size: int = 50, **criteria: Any
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        sort_by: Optional[str] = None,
+        descending: bool = True,
+        **criteria: Any,
     ) -> Page[SystemEvent]:
-        """Return a filtered, paginated page of events, newest first.
+        """Return a filtered, paginated page of events.
 
         Args:
             page: 1-based page number.
             page_size: Rows per page.
+            sort_by: Sort key from :attr:`sortable_fields`. Defaults to
+                the time the event occurred.
+            descending: Whether to sort descending.
             **criteria: Any argument accepted by :meth:`build_query`.
 
         Returns:
@@ -1150,8 +1243,8 @@ class SystemRepository(BaseRepository[SystemEvent]):
         return self.paginate(
             page=page,
             page_size=page_size,
-            order_by=SystemEvent.occurred_at,
-            descending=True,
+            order_by=self.resolve_sort(sort_by) or SystemEvent.occurred_at,
+            descending=descending,
             statement=self.build_query(**criteria),
         )
 
