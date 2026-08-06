@@ -8,11 +8,10 @@ import { Pagination } from './Pagination';
 interface DataTableProps<T> {
   columns: Column<T>[];
   rows: T[];
-  /** Stable React key for a row. */
   rowKey: (row: T) => string | number;
 
   isLoading?: boolean;
-  /** True during a background refetch; dims the body without unmounting it. */
+  /** True during a background refetch; dims the body without unmounting. */
   isFetching?: boolean;
   error?: unknown;
   onRetry?: () => void;
@@ -25,17 +24,22 @@ interface DataTableProps<T> {
   onPageSizeChange?: (size: number) => void;
 
   onRowClick?: (row: T) => void;
+  /** Left status rail class per row, e.g. from a tone. */
+  rowRail?: (row: T) => string | undefined;
   emptyTitle?: string;
   emptyDescription?: string;
+  /** Renders the empty state as good news. */
+  emptyPositive?: boolean;
   className?: string;
 }
 
 /**
- * Reusable table with sorting, pagination and full state handling.
+ * Dense operational table.
  *
- * Owns no data fetching and no formatting: columns supply their own
- * renderers, and the parent supplies rows plus query state. That keeps
- * every list page consistent while leaving business logic outside.
+ * Rows are compact with hairline separators and an optional left status
+ * rail, so severity is readable by colour position alone before any text
+ * is parsed. Owns no fetching and no formatting: columns supply their
+ * own renderers and the parent supplies query state.
  */
 export function DataTable<T>({
   columns,
@@ -51,28 +55,31 @@ export function DataTable<T>({
   onPageChange,
   onPageSizeChange,
   onRowClick,
-  emptyTitle = 'No records found',
-  emptyDescription = 'Try widening your filters or clearing the search term.',
+  rowRail,
+  emptyTitle = 'No records',
+  emptyDescription = 'Widen the filters or clear the search term.',
+  emptyPositive = false,
   className,
 }: DataTableProps<T>) {
-  if (error) {
-    return <ErrorState error={error} onRetry={onRetry} />;
-  }
-
-  if (isLoading) {
-    return <TableSkeleton rows={8} columns={columns.length} />;
-  }
+  if (error) return <ErrorState error={error} onRetry={onRetry} />;
+  if (isLoading) return <TableSkeleton rows={8} columns={columns.length} />;
 
   if (rows.length === 0) {
-    return <EmptyState title={emptyTitle} description={emptyDescription} />;
+    return (
+      <EmptyState
+        title={emptyTitle}
+        description={emptyDescription}
+        positive={emptyPositive}
+      />
+    );
   }
 
   return (
     <div className={cn('flex flex-col', className)}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[52rem] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-surface-700/70 text-left">
+        <table className="w-full min-w-[48rem] border-collapse text-xs">
+          <thead className="sticky top-0 z-10">
+            <tr className="border-b border-edge bg-panel-rail/90 backdrop-blur-sm">
               {columns.map((column) => {
                 const isSorted = sort?.sortBy === column.key;
                 const sortable = Boolean(column.sortable && onSort);
@@ -85,7 +92,7 @@ export function DataTable<T>({
                       isSorted ? (sort?.order === 'asc' ? 'ascending' : 'descending') : undefined
                     }
                     className={cn(
-                      'whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-content-muted',
+                      'whitespace-nowrap px-3 py-2 text-left text-2xs font-semibold uppercase tracking-[0.12em] text-ink-faint',
                       column.hideOnMobile && 'hidden md:table-cell',
                       column.className,
                     )}
@@ -95,20 +102,20 @@ export function DataTable<T>({
                         type="button"
                         onClick={() => onSort?.(column.key)}
                         className={cn(
-                          'inline-flex items-center gap-1.5 rounded transition-colors hover:text-content-primary',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
-                          isSorted && 'text-accent',
+                          'inline-flex items-center gap-1 rounded-control transition-colors hover:text-ink',
+                          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-info/60',
+                          isSorted && 'text-info',
                         )}
                       >
                         {column.header}
                         {isSorted ? (
                           sort?.order === 'asc' ? (
-                            <ArrowUp className="h-3 w-3" />
+                            <ArrowUp className="h-2.5 w-2.5" />
                           ) : (
-                            <ArrowDown className="h-3 w-3" />
+                            <ArrowDown className="h-2.5 w-2.5" />
                           )
                         ) : (
-                          <ChevronsUpDown className="h-3 w-3 opacity-40" />
+                          <ChevronsUpDown className="h-2.5 w-2.5 opacity-30" />
                         )}
                       </button>
                     ) : (
@@ -122,24 +129,26 @@ export function DataTable<T>({
 
           <tbody
             className={cn(
-              'divide-y divide-surface-700/50 transition-opacity duration-200',
-              isFetching && 'opacity-50',
+              'transition-opacity duration-200',
+              isFetching && 'opacity-45',
             )}
           >
-            {rows.map((row) => (
+            {rows.map((row, index) => (
               <tr
                 key={rowKey(row)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
+                style={{ animationDelay: `${Math.min(index, 12) * 14}ms` }}
                 className={cn(
-                  'transition-colors',
-                  onRowClick && 'cursor-pointer hover:bg-surface-800/70',
+                  'animate-row-in border-b border-edge-soft transition-colors duration-150',
+                  rowRail?.(row),
+                  onRowClick && 'cursor-pointer hover:bg-panel-raised',
                 )}
               >
                 {columns.map((column) => (
                   <td
                     key={column.key}
                     className={cn(
-                      'px-4 py-3 align-middle text-content-secondary',
+                      'px-3 py-2 align-middle text-ink-dim',
                       column.hideOnMobile && 'hidden md:table-cell',
                       column.className,
                     )}

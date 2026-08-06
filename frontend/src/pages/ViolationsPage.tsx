@@ -71,7 +71,7 @@ export function ViolationsPage() {
         header: 'Description',
         className: 'w-full',
         render: (row) => (
-          <span className="text-content-primary">{truncate(row.description, 80)}</span>
+          <span className="text-ink">{truncate(row.description, 80)}</span>
         ),
       },
       {
@@ -97,7 +97,7 @@ export function ViolationsPage() {
         header: 'Frame',
         hideOnMobile: true,
         render: (row) => (
-          <span className="font-mono tabular-nums">{row.frame_number ?? '—'}</span>
+          <span className="font-mono tabular">{row.frame_number ?? '—'}</span>
         ),
       },
       {
@@ -106,11 +106,11 @@ export function ViolationsPage() {
         hideOnMobile: true,
         render: (row) =>
           row.alert_id ? (
-            <span className="font-mono text-xs text-content-muted" title={row.alert_id}>
+            <span className="font-mono text-xs text-ink-faint" title={row.alert_id}>
               {shortId(row.alert_id)}
             </span>
           ) : (
-            <span className="text-content-muted">unlinked</span>
+            <span className="text-ink-faint">unlinked</span>
           ),
       },
     ],
@@ -127,7 +127,7 @@ export function ViolationsPage() {
       <Panel>
         <PanelHeader
           title="Violation Log"
-          description={
+          subtitle={
             query.data
               ? `${query.data.meta.total} violation${query.data.meta.total === 1 ? '' : 's'} recorded`
               : 'Loading violations…'
@@ -147,7 +147,7 @@ export function ViolationsPage() {
           }
         />
 
-        <div className="grid grid-cols-1 gap-3 border-b border-surface-700/70 p-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 border-b border-edge p-4 sm:grid-cols-3">
           <Field label="Search" className="sm:col-span-2">
             <SearchInput
               value={table.searchInput}

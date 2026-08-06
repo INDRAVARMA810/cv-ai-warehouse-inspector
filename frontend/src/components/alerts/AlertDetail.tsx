@@ -43,26 +43,26 @@ export function AlertDetail({ alert, onClose }: AlertDetailProps) {
         aria-label="Alert detail"
         aria-hidden={!open}
         className={cn(
-          'fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-surface-700/70 bg-surface-900 shadow-panel',
+          'fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-edge bg-panel shadow-panel',
           'transition-transform duration-200 ease-out',
           open ? 'translate-x-0' : 'translate-x-full',
         )}
       >
         {alert ? (
           <>
-            <header className="flex items-start justify-between gap-3 border-b border-surface-700/70 px-5 py-4">
+            <header className="flex items-start justify-between gap-3 border-b border-edge px-5 py-4">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <LevelBadge level={alert.level} />
                   <StatusBadge status={alert.status} />
                   {alert.was_escalated ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] text-amber-300">
+                    <span className="inline-flex items-center gap-1 text-[11px] text-warn">
                       <TrendingUp className="h-3 w-3" />
                       from {alert.initial_level}
                     </span>
                   ) : null}
                 </div>
-                <h2 className="mt-2 text-sm font-semibold leading-snug text-content-primary">
+                <h2 className="mt-2 text-sm font-semibold leading-snug text-ink">
                   {alert.message}
                 </h2>
               </div>
@@ -70,7 +70,7 @@ export function AlertDetail({ alert, onClose }: AlertDetailProps) {
             </header>
 
             <div className="flex-1 overflow-y-auto">
-              <dl className="divide-y divide-surface-700/50">
+              <dl className="divide-y divide-edge-soft">
                 <DetailRow label="Alert ID" value={alert.alert_id} mono />
                 <DetailRow label="Rule" value={humanise(alert.rule_name.replace(/Rule$/, ''))} />
                 <DetailRow label="Category" value={categoryLabel(alert.category)} />
@@ -110,18 +110,18 @@ export function AlertDetail({ alert, onClose }: AlertDetailProps) {
               </dl>
 
               {alert.metadata && Object.keys(alert.metadata).length > 0 ? (
-                <section className="border-t border-surface-700/50 px-5 py-4">
-                  <h3 className="text-[11px] font-medium uppercase tracking-wider text-content-muted">
+                <section className="border-t border-edge/50 px-5 py-4">
+                  <h3 className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">
                     Rule metadata
                   </h3>
-                  <pre className="mt-2 overflow-x-auto rounded-lg border border-surface-700 bg-surface-950 p-3 font-mono text-[11px] leading-relaxed text-content-secondary">
+                  <pre className="mt-2 overflow-x-auto rounded-lg border border-edge bg-void p-3 font-mono text-[11px] leading-relaxed text-ink-dim">
                     {JSON.stringify(alert.metadata, null, 2)}
                   </pre>
                 </section>
               ) : null}
             </div>
 
-            <footer className="space-y-3 border-t border-surface-700/70 px-5 py-4">
+            <footer className="space-y-3 border-t border-edge px-5 py-4">
               {mutationError ? (
                 <ErrorState error={mutationError} compact />
               ) : null}
@@ -151,7 +151,7 @@ export function AlertDetail({ alert, onClose }: AlertDetailProps) {
                 </Button>
               </div>
 
-              <p className="text-[11px] leading-relaxed text-content-muted">
+              <p className="text-[11px] leading-relaxed text-ink-faint">
                 {alert.status === 'active'
                   ? 'Acknowledge to record that this incident has been seen; resolve once the hazard has cleared.'
                   : alert.resolved || alert.status === 'expired'
@@ -179,18 +179,18 @@ function DetailRow({
 }) {
   return (
     <div className="flex items-start justify-between gap-4 px-5 py-3">
-      <dt className="shrink-0 text-xs text-content-muted">{label}</dt>
+      <dt className="shrink-0 text-xs text-ink-faint">{label}</dt>
       <dd className="min-w-0 text-right">
         <span
           className={cn(
-            'block break-words text-xs text-content-primary',
+            'block break-words text-xs text-ink',
             mono && 'font-mono',
           )}
           title={value}
         >
           {mono && value.length > 24 ? shortId(value, 24) + '…' : value}
         </span>
-        {hint ? <span className="mt-0.5 block text-[11px] text-content-muted">{hint}</span> : null}
+        {hint ? <span className="mt-0.5 block text-[11px] text-ink-faint">{hint}</span> : null}
       </dd>
     </div>
   );

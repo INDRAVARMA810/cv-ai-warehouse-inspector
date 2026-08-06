@@ -1,100 +1,99 @@
 /**
  * Domain vocabulary → presentation mapping.
  *
- * Centralising this means severity colour is defined once. A component
- * never decides what "critical" looks like, and the charts, badges and
- * table rows cannot drift apart.
+ * The palette is four signals only — emerald (safe), amber (warning),
+ * red (critical), blue (information). Emerald is reserved for genuinely
+ * good states: it never appears on a severity level, because a "low"
+ * alert is still an alert. Severity therefore runs blue → amber → red,
+ * and emerald is kept for resolved, healthy and compliant.
+ *
+ * Centralising this means a component never decides what "critical"
+ * looks like, so badges, rails, charts and rows cannot drift apart.
  */
 
 import type { AlertCategory, AlertLevel, AlertStatus } from '@/types';
 
-interface Tone {
-  /** Text colour class. */
+export interface Tone {
+  /** Foreground text colour class. */
   text: string;
-  /** Translucent background for pills and row highlights. */
+  /** Translucent fill for pills and row washes. */
   bg: string;
   /** Border colour for outlined elements. */
   border: string;
-  /** Solid colour for chart marks, where classes do not apply. */
+  /** Left status rail, applied to table rows and list items. */
+  rail: string;
+  /** Solid hex for chart marks and inline SVG, where classes cannot reach. */
   hex: string;
+  /** LED / dot colour class. */
+  dot: string;
   label: string;
 }
 
+const BLUE: Omit<Tone, 'label'> = {
+  text: 'text-info',
+  bg: 'bg-info/10',
+  border: 'border-info/30',
+  rail: 'shadow-rail-info',
+  hex: '#3B82F6',
+  dot: 'bg-info',
+};
+
+const AMBER: Omit<Tone, 'label'> = {
+  text: 'text-warn',
+  bg: 'bg-warn/10',
+  border: 'border-warn/30',
+  rail: 'shadow-rail-warn',
+  hex: '#F59E0B',
+  dot: 'bg-warn',
+};
+
+const RED: Omit<Tone, 'label'> = {
+  text: 'text-crit',
+  bg: 'bg-crit/12',
+  border: 'border-crit/35',
+  rail: 'shadow-rail-crit',
+  hex: '#EF4444',
+  dot: 'bg-crit',
+};
+
+const EMERALD: Omit<Tone, 'label'> = {
+  text: 'text-safe',
+  bg: 'bg-safe/10',
+  border: 'border-safe/30',
+  rail: 'shadow-rail-safe',
+  hex: '#10B981',
+  dot: 'bg-safe',
+};
+
+const NEUTRAL: Omit<Tone, 'label'> = {
+  text: 'text-ink-faint',
+  bg: 'bg-edge-soft',
+  border: 'border-edge',
+  rail: '',
+  hex: '#5E6873',
+  dot: 'bg-ink-ghost',
+};
+
+/**
+ * Severity ramp.
+ *
+ * `high` uses the same red family as `critical` but at reduced weight —
+ * both demand attention, and splitting them across two hues would imply
+ * a difference in kind rather than degree.
+ */
 const LEVEL_TONES: Record<AlertLevel, Tone> = {
-  info: {
-    text: 'text-sky-300',
-    bg: 'bg-sky-500/10',
-    border: 'border-sky-500/30',
-    hex: '#38BDF8',
-    label: 'Info',
-  },
-  low: {
-    text: 'text-cyan-300',
-    bg: 'bg-cyan-500/10',
-    border: 'border-cyan-500/30',
-    hex: '#22D3EE',
-    label: 'Low',
-  },
-  medium: {
-    text: 'text-amber-300',
-    bg: 'bg-amber-500/10',
-    border: 'border-amber-500/30',
-    hex: '#FBBF24',
-    label: 'Medium',
-  },
-  high: {
-    text: 'text-rose-300',
-    bg: 'bg-rose-500/10',
-    border: 'border-rose-500/30',
-    hex: '#FB7185',
-    label: 'High',
-  },
-  critical: {
-    text: 'text-red-300',
-    bg: 'bg-red-500/15',
-    border: 'border-red-500/40',
-    hex: '#EF4444',
-    label: 'Critical',
-  },
+  info: { ...BLUE, label: 'Info' },
+  low: { ...BLUE, text: 'text-info/80', label: 'Low' },
+  medium: { ...AMBER, label: 'Medium' },
+  high: { ...RED, text: 'text-crit/85', bg: 'bg-crit/10', label: 'High' },
+  critical: { ...RED, label: 'Critical' },
 };
 
 const STATUS_TONES: Record<AlertStatus, Tone> = {
-  active: {
-    text: 'text-rose-300',
-    bg: 'bg-rose-500/10',
-    border: 'border-rose-500/30',
-    hex: '#FB7185',
-    label: 'Active',
-  },
-  acknowledged: {
-    text: 'text-amber-300',
-    bg: 'bg-amber-500/10',
-    border: 'border-amber-500/30',
-    hex: '#FBBF24',
-    label: 'Acknowledged',
-  },
-  resolved: {
-    text: 'text-emerald-300',
-    bg: 'bg-emerald-500/10',
-    border: 'border-emerald-500/30',
-    hex: '#34D399',
-    label: 'Resolved',
-  },
-  expired: {
-    text: 'text-slate-400',
-    bg: 'bg-slate-500/10',
-    border: 'border-slate-500/30',
-    hex: '#64748B',
-    label: 'Expired',
-  },
-};
-
-const FALLBACK_TONE: Tone = {
-  text: 'text-content-secondary',
-  bg: 'bg-surface-700/40',
-  border: 'border-surface-600',
-  hex: '#64748B',
-  label: 'Unknown',
+  active: { ...RED, label: 'Active' },
+  acknowledged: { ...AMBER, label: 'Acknowledged' },
+  resolved: { ...EMERALD, label: 'Resolved' },
+  expired: { ...NEUTRAL, label: 'Expired' },
 };
 
 const CATEGORY_LABELS: Record<AlertCategory, string> = {
@@ -107,41 +106,49 @@ const CATEGORY_LABELS: Record<AlertCategory, string> = {
   other: 'Other',
 };
 
+const FALLBACK: Tone = { ...NEUTRAL, label: 'Unknown' };
+
 /** Presentation tone for an alert urgency level. */
 export function levelTone(level: string | null | undefined): Tone {
-  if (!level) return FALLBACK_TONE;
-  return LEVEL_TONES[level as AlertLevel] ?? FALLBACK_TONE;
+  if (!level) return FALLBACK;
+  return LEVEL_TONES[level as AlertLevel] ?? FALLBACK;
 }
 
 /** Presentation tone for an alert lifecycle status. */
 export function statusTone(status: string | null | undefined): Tone {
-  if (!status) return FALLBACK_TONE;
-  return STATUS_TONES[status as AlertStatus] ?? FALLBACK_TONE;
+  if (!status) return FALLBACK;
+  return STATUS_TONES[status as AlertStatus] ?? FALLBACK;
 }
 
 /**
  * Presentation tone for a system-event level.
  *
- * System events use logging vocabulary (`warning`, `error`) rather than
- * alert vocabulary, so they are mapped onto the same visual scale here.
+ * System events speak logging vocabulary (`warning`, `error`) rather
+ * than alert vocabulary, so they are mapped onto the same visual scale.
  */
 export function eventLevelTone(level: string | null | undefined): Tone {
   switch ((level ?? '').toLowerCase()) {
     case 'critical':
     case 'fatal':
-      return LEVEL_TONES.critical;
     case 'error':
-      return LEVEL_TONES.high;
+      return { ...RED, label: 'Error' };
     case 'warning':
     case 'warn':
-      return LEVEL_TONES.medium;
+      return { ...AMBER, label: 'Warning' };
     case 'info':
-      return LEVEL_TONES.info;
+      return { ...BLUE, label: 'Info' };
     case 'debug':
-      return FALLBACK_TONE;
+      return FALLBACK;
     default:
-      return FALLBACK_TONE;
+      return FALLBACK;
   }
+}
+
+/** Tone for a boolean healthy/unhealthy component. */
+export function healthTone(healthy: boolean): Tone {
+  return healthy
+    ? { ...EMERALD, label: 'Operational' }
+    : { ...RED, label: 'Fault' };
 }
 
 /** Human-readable label for a hazard category. */

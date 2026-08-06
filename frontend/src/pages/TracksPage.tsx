@@ -64,7 +64,7 @@ export function TracksPage() {
         header: 'Track',
         sortable: true,
         render: (row) => (
-          <span className="font-mono font-medium text-content-primary">#{row.track_id}</span>
+          <span className="font-mono font-medium text-ink">#{row.track_id}</span>
         ),
       },
       {
@@ -85,7 +85,7 @@ export function TracksPage() {
         header: 'Frames',
         sortable: true,
         render: (row) => (
-          <span className="font-mono tabular-nums">{row.observation_count}</span>
+          <span className="font-mono tabular">{row.observation_count}</span>
         ),
       },
       {
@@ -93,7 +93,7 @@ export function TracksPage() {
         header: 'Dwell',
         hideOnMobile: true,
         render: (row) => (
-          <span className="whitespace-nowrap font-mono tabular-nums">
+          <span className="whitespace-nowrap font-mono tabular">
             {formatDuration(durationBetween(row.first_seen, row.last_seen))}
           </span>
         ),
@@ -133,7 +133,7 @@ export function TracksPage() {
       <Panel>
         <PanelHeader
           title="Tracked Objects"
-          description={
+          subtitle={
             query.data
               ? `${query.data.meta.total} track${query.data.meta.total === 1 ? '' : 's'} recorded`
               : 'Loading tracks…'
@@ -153,7 +153,7 @@ export function TracksPage() {
           }
         />
 
-        <div className="grid grid-cols-1 gap-3 border-b border-surface-700/70 p-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 border-b border-edge p-4 sm:grid-cols-3">
           <Field label="Search" className="sm:col-span-2">
             <SearchInput
               value={table.searchInput}
@@ -196,18 +196,18 @@ export function TracksPage() {
 
 /** Confidence as a compact bar plus its numeric value. */
 function ConfidenceBar({ value }: { value: number | null }) {
-  if (value == null) return <span className="text-content-muted">—</span>;
+  if (value == null) return <span className="text-ink-faint">—</span>;
 
   const percent = Math.max(0, Math.min(1, value)) * 100;
   const tone =
-    percent >= 80 ? 'bg-emerald-400' : percent >= 55 ? 'bg-amber-400' : 'bg-rose-400';
+    percent >= 80 ? 'bg-safe' : percent >= 55 ? 'bg-warn' : 'bg-crit';
 
   return (
     <span className="flex items-center gap-2">
-      <span className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-700">
+      <span className="h-1.5 w-16 overflow-hidden rounded-full bg-edge-soft">
         <span className={cn('block h-full rounded-full', tone)} style={{ width: `${percent}%` }} />
       </span>
-      <span className="font-mono tabular-nums text-xs">{formatPercent(value, 0)}</span>
+      <span className="font-mono tabular text-xs">{formatPercent(value, 0)}</span>
     </span>
   );
 }

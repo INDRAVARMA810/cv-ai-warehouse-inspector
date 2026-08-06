@@ -112,7 +112,7 @@ export function AlertsPage() {
         header: 'Incident',
         className: 'w-full',
         render: (row) => (
-          <span className="text-content-primary">{truncate(row.message, 78)}</span>
+          <span className="text-ink">{truncate(row.message, 78)}</span>
         ),
       },
       {
@@ -147,7 +147,7 @@ export function AlertsPage() {
         header: 'Seen',
         sortable: true,
         hideOnMobile: true,
-        render: (row) => <span className="font-mono tabular-nums">{row.occurrence_count}</span>,
+        render: (row) => <span className="font-mono tabular">{row.occurrence_count}</span>,
       },
       {
         key: 'status',
@@ -174,7 +174,7 @@ export function AlertsPage() {
       <Panel>
         <PanelHeader
           title="Alert Register"
-          description={
+          subtitle={
             query.data
               ? `${query.data.meta.total} incident${query.data.meta.total === 1 ? '' : 's'} matching`
               : 'Loading incidents…'
@@ -189,7 +189,7 @@ export function AlertsPage() {
           }
         />
 
-        <div className="grid grid-cols-1 gap-3 border-b border-surface-700/70 p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 border-b border-edge p-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Search" className="sm:col-span-2 lg:col-span-1">
             <SearchInput
               value={table.searchInput}

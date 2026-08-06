@@ -1,3 +1,11 @@
+/* Self-hosted so the dashboard renders identically offline and inside
+   the container — no runtime call to a font CDN. */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource-variable/jetbrains-mono';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -14,35 +22,62 @@
   }
 
   body {
-    @apply bg-surface-950 text-content-primary antialiased;
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    @apply bg-void text-ink antialiased;
+    /* Disambiguated glyphs: an operator must never misread 0/O or 1/l
+       in a track ID or a timestamp. */
+    font-feature-settings: 'cv01', 'cv02', 'cv03', 'cv04', 'ss01', 'tnum';
   }
 
-  /* Keyboard focus is always visible; pointer focus is not. */
+  /* Numeric readouts must not reflow as values tick. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
   :focus-visible {
-    @apply outline-none ring-2 ring-accent/60;
+    @apply outline-none ring-2 ring-info/70 ring-offset-1 ring-offset-void;
   }
 
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
   }
-
   ::-webkit-scrollbar-track {
-    @apply bg-surface-900;
+    @apply bg-panel-inset;
   }
-
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full border-2 border-surface-900 bg-surface-700;
+    @apply rounded-sm border border-panel-inset bg-edge-strong;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-ghost;
+  }
+  ::-webkit-scrollbar-corner {
+    @apply bg-panel-inset;
+  }
+}
+
+@layer components {
+  /* Section eyebrow used above every panel group. */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.14em] text-ink-faint;
   }
 
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-surface-600;
+  /* Recessed well for live data — camera viewport, log streams. */
+  .well {
+    @apply bg-panel-inset shadow-well;
+    background-image: theme('backgroundImage.scanlines');
+  }
+
+  /* Hairline grid backdrop for the camera viewport. */
+  .grid-backdrop {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+    background-size: 44px 44px;
   }
 }
 
 @layer utilities {
-  /* Respect users who have asked for reduced motion. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -50,6 +85,7 @@
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
     }
   }
 }

@@ -27,7 +27,7 @@ const INITIAL_FILTERS: EventFilters = {};
 
 const LEVEL_OPTIONS: SelectOption<string>[] = [
   { value: 'info', label: 'Info' },
-  { value: 'warning', label: 'Warning' },
+  { value: 'warn', label: 'Warning' },
   { value: 'error', label: 'Error' },
   { value: 'critical', label: 'Critical' },
 ];
@@ -87,7 +87,7 @@ export function SystemHealthPage() {
         header: 'Event',
         sortable: true,
         render: (row) => (
-          <span className="whitespace-nowrap font-medium text-content-primary">
+          <span className="whitespace-nowrap font-medium text-ink">
             {humanise(row.event_type)}
           </span>
         ),
@@ -104,7 +104,7 @@ export function SystemHealthPage() {
         sortable: true,
         hideOnMobile: true,
         render: (row) => (
-          <span className="whitespace-nowrap font-mono text-xs text-content-muted">
+          <span className="whitespace-nowrap font-mono text-xs text-ink-faint">
             {row.source ?? '—'}
           </span>
         ),
@@ -125,11 +125,7 @@ export function SystemHealthPage() {
     >
       <div className="space-y-5">
         <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-          <SystemStatusPanel
-            health={health.data}
-            isLoading={health.isLoading}
-            isError={health.isError}
-          />
+          <SystemStatusPanel />
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:col-span-2">
             {query.isLoading ? (
@@ -140,23 +136,21 @@ export function SystemHealthPage() {
                   label="Events (page)"
                   value={query.data?.items.length ?? 0}
                   icon={<ScrollText className="h-4 w-4" />}
-                  tone="accent"
+                  tone="info"
                   hint={`${query.data?.meta.total ?? 0} recorded in total`}
                 />
                 <StatCard
                   label="Warnings"
                   value={counts.warning ?? 0}
                   icon={<TriangleAlert className="h-4 w-4" />}
-                  tone={(counts.warning ?? 0) > 0 ? 'warning' : 'neutral'}
-                  emphasise={(counts.warning ?? 0) > 0}
+                  tone={(counts.warning ?? 0) > 0 ? 'warn' : 'neutral'}
                   hint="On the visible page"
                 />
                 <StatCard
                   label="Errors"
                   value={(counts.error ?? 0) + (counts.critical ?? 0)}
                   icon={<AlertOctagon className="h-4 w-4" />}
-                  tone={(counts.error ?? 0) + (counts.critical ?? 0) > 0 ? 'danger' : 'success'}
-                  emphasise={(counts.error ?? 0) + (counts.critical ?? 0) > 0}
+                  tone={(counts.error ?? 0) + (counts.critical ?? 0) > 0 ? 'crit' : 'safe'}
                   hint="On the visible page"
                 />
               </>
@@ -167,7 +161,7 @@ export function SystemHealthPage() {
         <Panel>
           <PanelHeader
             title="Event Log"
-            description={
+            subtitle={
               query.data
                 ? `${query.data.meta.total} event${query.data.meta.total === 1 ? '' : 's'} recorded`
                 : 'Loading events…'
@@ -187,7 +181,7 @@ export function SystemHealthPage() {
             }
           />
 
-          <div className="grid grid-cols-1 gap-3 border-b border-surface-700/70 p-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 border-b border-edge p-4 sm:grid-cols-3">
             <Field label="Search" className="sm:col-span-2">
               <SearchInput
                 value={table.searchInput}
@@ -223,7 +217,7 @@ export function SystemHealthPage() {
           />
         </Panel>
 
-        <p className="flex items-start gap-2 px-1 text-xs text-content-muted">
+        <p className="flex items-start gap-2 px-1 text-xs text-ink-faint">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           Health is polled every 15 seconds and the event log every 20. Warning and error counts
           describe the currently visible page, not the whole log.

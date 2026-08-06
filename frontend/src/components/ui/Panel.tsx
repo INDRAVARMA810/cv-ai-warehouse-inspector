@@ -1,23 +1,27 @@
-import type { ReactNode } from 'react';
+import type { ComponentPropsWithoutRef, ReactNode } from 'react';
 import { cn } from '@/utils/cn';
 
-interface PanelProps {
+interface PanelProps extends ComponentPropsWithoutRef<'section'> {
   children: ReactNode;
-  className?: string;
+  /** Raises the surface one step, for panels that sit on top of others. */
+  raised?: boolean;
 }
 
 /**
- * The base surface every piece of content sits on.
+ * The instrument housing every piece of content sits in.
  *
- * A single panel component keeps elevation, radius and border colour
- * consistent, so the interface reads as one system rather than a
- * collection of separately-styled boxes.
+ * Square-ish corners and a hairline edge rather than a soft rounded
+ * card: the reference is rack-mounted equipment, not a consumer app.
+ * A single component keeps elevation and edge treatment identical
+ * across the product, so the interface reads as one machine.
  */
-export function Panel({ children, className }: PanelProps) {
+export function Panel({ children, className, raised = false, ...rest }: PanelProps) {
   return (
     <section
+      {...rest}
       className={cn(
-        'rounded-xl border border-surface-700/70 bg-surface-850/80 shadow-panel backdrop-blur-sm',
+        'relative rounded-panel border border-edge shadow-panel',
+        raised ? 'bg-panel-raised' : 'bg-panel',
         className,
       )}
     >
@@ -28,48 +32,122 @@ export function Panel({ children, className }: PanelProps) {
 
 interface PanelHeaderProps {
   title: string;
-  description?: string;
+  /** Short qualifier shown beneath the title. */
+  subtitle?: string;
   icon?: ReactNode;
+  /** Right-aligned controls or status chips. */
   actions?: ReactNode;
+  /** Status rail colour class, e.g. from a tone's `rail`. */
+  rail?: string;
   className?: string;
+  /** Compact variant for dense panel stacks. */
+  dense?: boolean;
 }
 
-/** Standard panel heading with optional icon and trailing actions. */
+/**
+ * Panel header rail.
+ *
+ * The title is a small, wide-tracked uppercase label rather than a
+ * heading — it names an instrument, and should recede once an operator
+ * knows the layout, leaving the data as the loudest element.
+ */
 export function PanelHeader({
   title,
-  description,
+  subtitle,
   icon,
   actions,
+  rail,
   className,
+  dense = false,
 }: PanelHeaderProps) {
   return (
     <header
       className={cn(
-        'flex items-start justify-between gap-4 border-b border-surface-700/70 px-5 py-4',
+        'flex items-center justify-between gap-3 border-b border-edge bg-panel-rail/60',
+        dense ? 'px-3 py-2' : 'px-4 py-2.5',
+        rail,
         className,
       )}
     >
-      <div className="flex min-w-0 items-start gap-3">
-        {icon ? (
-          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-surface-700 bg-surface-800 text-accent">
-            {icon}
-          </span>
-        ) : null}
+      <div className="flex min-w-0 items-center gap-2.5">
+        {icon ? <span className="shrink-0 text-ink-faint">{icon}</span> : null}
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold tracking-wide text-content-primary">
+          <h2 className="truncate text-2xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
             {title}
           </h2>
-          {description ? (
-            <p className="mt-0.5 text-xs text-content-muted">{description}</p>
+          {subtitle ? (
+            <p className="truncate text-2xs text-ink-ghost">{subtitle}</p>
           ) : null}
         </div>
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex shrink-0 items-center gap-1.5">{actions}</div>
+      ) : null}
     </header>
   );
 }
 
-/** Padded body region for panel content. */
-export function PanelBody({ children, className }: PanelProps) {
-  return <div className={cn('p-5', className)}>{children}</div>;
+/** Padded body region. */
+export function PanelBody({
+  children,
+  className,
+  ...rest
+}: ComponentPropsWithoutRef<'div'>) {
+  return (
+    <div {...rest} className={cn('p-4', className)}>
+      {children}
+    </div>
+  );
+}
+
+/** Footer rail for summary figures or a link onward. */
+export function PanelFooter({
+  children,
+  className,
+  ...rest
+}: ComponentPropsWithoutRef<'div'>) {
+  return (
+    <div
+      {...rest}
+      className={cn(
+        'flex items-center justify-between gap-3 border-t border-edge bg-panel-rail/40 px-4 py-2',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Section grouping header, used above a row of panels.
+ *
+ * Gives the dashboard an explicit reading order — sections are numbered
+ * so an operator can be told "check section 3" over a radio.
+ */
+export function SectionHeading({
+  index,
+  title,
+  hint,
+  actions,
+}: {
+  index?: number;
+  title: string;
+  hint?: string;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="mb-2.5 flex items-end justify-between gap-4">
+      <div className="flex items-baseline gap-2.5">
+        {index !== undefined ? (
+          <span className="font-mono text-2xs tabular text-ink-ghost">
+            {String(index).padStart(2, '0')}
+          </span>
+        ) : null}
+        <h2 className="eyebrow text-ink-dim">{title}</h2>
+        {hint ? <span className="text-2xs text-ink-ghost">{hint}</span> : null}
+      </div>
+      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+    </div>
+  );
 }
