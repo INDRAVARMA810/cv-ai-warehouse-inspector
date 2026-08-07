@@ -92,6 +92,9 @@ services:
       # Live stream. STREAM_SOURCE is a webcam index or a path *inside
       # the container* — mount host footage via the videos volume below.
       STREAM_SOURCE: ${STREAM_SOURCE:-0}
+      # Only affects webcam sources, not the file source above; default
+      # keeps the container's own auto-detection (Linux, unaffected).
+      CAMERA_BACKEND: ${CAMERA_BACKEND:-auto}
       STREAM_WEIGHTS: ${STREAM_WEIGHTS:-yolov8n.pt}
       STREAM_DEVICE: ${STREAM_DEVICE:-}
       STREAM_WIDTH: ${STREAM_WIDTH:-960}

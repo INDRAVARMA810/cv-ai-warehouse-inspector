@@ -312,6 +312,10 @@ class VideoStream:
             self._last_error = str(exc)
             return
 
+        from app.streaming.persistence import LivePersistence
+
+        persistence = LivePersistence()
+
         self._device = getattr(pipeline, "device", None)
         camera = Camera(source=self.config.source)
 
@@ -374,6 +378,8 @@ class VideoStream:
                     except Exception:
                         logger.exception("Pipeline failed on a frame; skipping it.")
                         continue
+
+                    persistence.record(outcome.rule_result, outcome.tracked_objects)
 
                     pipeline.fps_counter.update()
                     self.manager.publish(annotated)

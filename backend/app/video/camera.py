@@ -5,6 +5,8 @@ reading frames from a webcam or a video file, with graceful handling
 of invalid sources and guaranteed resource release.
 """
 
+import os
+import platform
 from types import TracebackType
 from typing import Optional, Type, Union
 
@@ -18,6 +20,47 @@ class CameraError(Exception):
     """Raised when a camera or video source cannot be opened or read."""
 
 
+def _resolve_backend(name: str, source: Union[int, str]) -> int:
+    """Map a ``CAMERA_BACKEND`` value to an OpenCV ``VideoCapture`` API preference.
+
+    ``dshow``/``msmf`` are Windows camera-capture APIs; they cannot open a
+    video file or URL, so they only apply when ``source`` is a webcam index.
+    For anything else (file paths, streams, non-Windows platforms) this
+    resolves to ``cv2.CAP_ANY``, OpenCV's own auto-detection — the same
+    backend selection :class:`Camera` used before this option existed.
+
+    Args:
+        name: ``"auto"``, ``"dshow"``, or ``"msmf"`` (case-insensitive).
+        source: The capture source, used to tell a webcam index apart
+            from a file/URL source.
+
+    Returns:
+        An OpenCV ``cv2.CAP_*`` constant to pass as the ``apiPreference``
+        argument of :class:`cv2.VideoCapture`.
+    """
+    normalized = (name or "auto").strip().lower()
+
+    if not isinstance(source, int):
+        if normalized not in ("auto", ""):
+            logger.warning(
+                f"CAMERA_BACKEND={name!r} only applies to webcam indices; "
+                f"ignoring it for file/URL source {source!r}."
+            )
+        return cv2.CAP_ANY
+
+    if normalized == "dshow":
+        return cv2.CAP_DSHOW
+    if normalized == "msmf":
+        return cv2.CAP_MSMF
+    if normalized != "auto":
+        logger.warning(f"Unknown CAMERA_BACKEND={name!r}; falling back to 'auto'.")
+
+    # Auto: MSMF (OpenCV's own default on Windows) is the backend that was
+    # failing to grab frames; DirectShow is the long-standing reliable
+    # alternative. Linux/macOS keep CAP_ANY, i.e. no behavior change there.
+    return cv2.CAP_DSHOW if platform.system() == "Windows" else cv2.CAP_ANY
+
+
 class Camera:
     """Wraps a :class:`cv2.VideoCapture` source (webcam or video file).
 
@@ -26,16 +69,23 @@ class Camera:
 
     Attributes:
         source: Webcam index (e.g. ``0``) or a path/URL to a video file.
+        backend: Requested capture backend (``"auto"``, ``"dshow"``, or
+            ``"msmf"``).
     """
 
-    def __init__(self, source: Union[int, str] = 0) -> None:
+    def __init__(self, source: Union[int, str] = 0, backend: Optional[str] = None) -> None:
         """Initialize the camera wrapper without opening the source.
 
         Args:
             source: Webcam device index (``int``) or a path/URL to a
                 video file (``str``). Defaults to ``0`` (default webcam).
+            backend: Capture backend to use: ``"auto"`` (default), ``"dshow"``,
+                or ``"msmf"``. When omitted, falls back to the
+                ``CAMERA_BACKEND`` environment variable, then ``"auto"``.
         """
         self.source: Union[int, str] = source
+        self.backend: str = backend if backend is not None else os.getenv("CAMERA_BACKEND", "auto")
+        self._api_preference: int = _resolve_backend(self.backend, source)
         self._capture: Optional[cv2.VideoCapture] = None
 
     def open(self) -> None:
@@ -45,14 +95,14 @@ class Camera:
             CameraError: If the source cannot be opened (e.g. an
                 invalid webcam index or a missing/corrupt video file).
         """
-        capture = cv2.VideoCapture(self.source)
+        capture = cv2.VideoCapture(self.source, self._api_preference)
 
         if not capture.isOpened():
             capture.release()
             raise CameraError(f"Unable to open video source: {self.source!r}")
 
         self._capture = capture
-        logger.info(f"Camera source opened: {self.source!r}")
+        logger.info(f"Camera source opened: {self.source!r} (backend={self.backend})")
 
     def is_opened(self) -> bool:
         """Return whether the video source is currently open."""
