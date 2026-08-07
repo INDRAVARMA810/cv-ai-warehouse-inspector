@@ -193,60 +193,115 @@ independently testable and the engine can run them in any order.
 
 ## 🏗️ Architecture
 
-### Layered design
+### System architecture
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│  PRESENTATION            React 18 · TypeScript · Tailwind · Recharts │
-│  pages → components → hooks → services → types                       │
-└────────────────────────────────┬─────────────────────────────────────┘
-                                 │  HTTP / MJPEG
-┌────────────────────────────────▼─────────────────────────────────────┐
-│  API                     FastAPI · Pydantic v2 · OpenAPI             │
-│  routers → dependencies → schemas → exception handlers               │
-│  ⚠ no router imports SQLAlchemy or builds a query                    │
-└────────────────────────────────┬─────────────────────────────────────┘
-                                 │
-┌────────────────────────────────▼─────────────────────────────────────┐
-│  DOMAIN                                                              │
-│                                                                      │
-│   video ──▶ image_processing ──▶ detection ──▶ tracking              │
-│                                                     │                │
-│                                                     ▼                │
-│                                    rules ──▶ alerts                  │
-│                                                     │                │
-│                                    streaming ◀──────┘                │
-└────────────────────────────────┬─────────────────────────────────────┘
-                                 │  repositories only
-┌────────────────────────────────▼─────────────────────────────────────┐
-│  PERSISTENCE             SQLAlchemy 2.0 · psycopg 3 · PostgreSQL 16  │
-│  database → session → models → repositories → migrations → seed      │
-└──────────────────────────────────────────────────────────────────────┘
+> 📐 Full set: **[`docs/architecture/`](docs/architecture/)** · SVG exports: **[`docs/diagrams/`](docs/diagrams/)**
+> Every diagram is derived from the implementation — the dependency graph is machine-generated
+> by [`scripts/extract-dependencies.sh`](scripts/extract-dependencies.sh).
+
+```mermaid
+%%{init: {'theme':'dark','themeVariables':{'fontFamily':'Inter,system-ui,sans-serif','fontSize':'14px','lineColor':'#5E6873','primaryTextColor':'#E6E9EC','clusterBkg':'#0B0D10','clusterBorder':'#2A3138','titleColor':'#98A2AC'}}}%%
+flowchart TB
+    subgraph EDGE["Capture Edge"]
+        CAM["<b>Video Source</b><br/><i>webcam · file · RTSP</i>"]
+    end
+
+    subgraph BACKEND["Backend Container — FastAPI + Pipeline &lpar;one process&rpar;"]
+        direction TB
+        subgraph WORKER["Pipeline Worker Thread"]
+            direction LR
+            CV["<b>OpenCV</b><br/>app.video"]
+            YOLO["<b>YOLOv8</b><br/>app.detection"]
+            BT["<b>ByteTrack</b><br/>app.tracking"]
+            RULES["<b>Rule Engine</b><br/>app.rules"]
+            ALERTS["<b>Alert Engine</b><br/>app.alerts"]
+            CV -->|"BGR ndarray"| YOLO
+            YOLO -->|"DetectionResult"| BT
+            BT -->|"TrackedObject[]"| RULES
+            RULES -->|"RuleResult"| ALERTS
+        end
+        SM["<b>StreamManager</b><br/><i>latest-frame-wins</i>"]
+        LP["<b>LivePersistence</b><br/><i>debounced</i>"]
+        REPO["<b>Repositories</b><br/><i>only SQL in the codebase</i>"]
+        API["<b>FastAPI Routers</b>"]
+        MJPEG["<b>MJPEG Generator</b>"]
+    end
+
+    subgraph DATA["Database Container"]
+        PG[("<b>PostgreSQL 16</b>")]
+    end
+
+    subgraph WEB["Frontend Container"]
+        NGINX["<b>nginx</b><br/>bundle + proxy"]
+        REACT["<b>React Dashboard</b>"]
+    end
+
+    BROWSER(["Operator Browser"])
+
+    CAM -->|"VideoCapture.read&lpar;&rpar;"| CV
+    ALERTS --> LP
+    WORKER -->|"publish&lpar;annotated&rpar;"| SM
+    LP -->|"save_domain&lpar;&rpar;"| REPO
+    REPO -->|"SQLAlchemy · psycopg 3"| PG
+    SM --> MJPEG
+    API --> REPO
+    API --> SM
+    MJPEG -->|"multipart/x-mixed-replace"| NGINX
+    API -->|"JSON"| NGINX
+    NGINX --> REACT
+    NGINX <-->|"HTTP :8080"| BROWSER
+
+    classDef capture fill:#1a1410,stroke:#F59E0B,stroke-width:2px,color:#E6E9EC
+    classDef vision fill:#0E1620,stroke:#3B82F6,stroke-width:2px,color:#E6E9EC
+    classDef safety fill:#1a1012,stroke:#EF4444,stroke-width:2px,color:#E6E9EC
+    classDef infra fill:#0E1013,stroke:#2A3138,stroke-width:1.5px,color:#E6E9EC
+    classDef store fill:#0d1a16,stroke:#10B981,stroke-width:2px,color:#E6E9EC
+    classDef client fill:#141019,stroke:#8B5CF6,stroke-width:2px,color:#E6E9EC
+    class CAM capture
+    class CV,YOLO,BT vision
+    class RULES,ALERTS safety
+    class SM,LP,REPO,API,MJPEG,NGINX infra
+    class PG store
+    class REACT,BROWSER client
 ```
 
-### Runtime topology (Docker)
+### End-to-end frame journey
 
-```
-                    ┌──────────────────────────────┐
-  host :8080  ─────▶│  frontend   nginx + React    │
-                    │   · serves the built bundle  │
-                    │   · proxies /api → backend   │
-                    └──────────────┬───────────────┘
-                                   │  frontend_net
-                    ┌──────────────▼───────────────┐
-                    │  backend    FastAPI + YOLO   │
-                    │   · REST API + MJPEG stream  │
-                    │   · pipeline worker thread   │
-                    └──────────────┬───────────────┘
-                                   │  backend_net
-                    ┌──────────────▼───────────────┐
-                    │  postgres   16-alpine        │
-                    │   · volume: postgres_data    │
-                    └──────────────────────────────┘
+```mermaid
+%%{init: {'theme':'dark','themeVariables':{'fontFamily':'Inter,system-ui,sans-serif','fontSize':'13px','lineColor':'#5E6873','primaryTextColor':'#E6E9EC'}}}%%
+flowchart LR
+    A["Camera"] --> B["OpenCV<br/>preprocess"]
+    B --> C["YOLOv8<br/>detect"]
+    C --> D["ByteTrack<br/>track"]
+    D --> E["Rule Engine<br/>evaluate"]
+    E --> F["Alert Engine<br/>dedup"]
+    F --> G["LivePersistence"]
+    G --> H[("PostgreSQL")]
+    H --> I["FastAPI"]
+    I --> J["React Dashboard"]
+    E -.->|"annotated frame"| K["StreamManager"]
+    K -.->|"MJPEG"| J
+
+    classDef vision fill:#0E1620,stroke:#3B82F6,stroke-width:2px,color:#E6E9EC
+    classDef safety fill:#1a1012,stroke:#EF4444,stroke-width:2px,color:#E6E9EC
+    classDef store fill:#0d1a16,stroke:#10B981,stroke-width:2px,color:#E6E9EC
+    classDef client fill:#141019,stroke:#8B5CF6,stroke-width:2px,color:#E6E9EC
+    class A,B,C,D vision
+    class E,F safety
+    class G,H,I store
+    class J,K client
 ```
 
-**Two networks, not one.** The frontend has *no route* to PostgreSQL — only the backend sits on
-both. The backend publishes no host port, so there is a single entry point to secure.
+### Diagram index
+
+| # | Diagram | Answers |
+|:--:|:--|:--|
+| 1 | [System Architecture](docs/architecture/01-system-architecture.md) | Components and how they communicate |
+| 2 | [Data Flow](docs/architecture/02-data-flow.md) | A single frame, end to end |
+| 3 | [Sequence — Zone Intrusion](docs/architecture/03-sequence-alert.md) | Frame → detection → alert → dashboard |
+| 4 | [Deployment](docs/architecture/04-deployment.md) | Docker vs. local topology |
+| 5 | [Components](docs/architecture/05-components.md) | Every backend module and its exports |
+| 6 | [Folder Dependencies](docs/architecture/06-folder-dependencies.md) | Machine-derived import graph |
 
 ### Key design decisions
 

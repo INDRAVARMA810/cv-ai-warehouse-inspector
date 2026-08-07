@@ -15,7 +15,7 @@ import {
   Siren,
   Users,
 } from 'lucide-react';
-import { useDashboardData } from '@/hooks';
+import { ANALYSIS_SAMPLE_SIZE, useDashboardData } from '@/hooks';
 import type { Alert, Column } from '@/types';
 import { AppLayout } from '@/components/layout';
 import {
@@ -249,7 +249,7 @@ export function DashboardPage() {
             <Panel>
               <PanelHeader
                 title="Occupancy Trend"
-                subtitle="Objects on floor, trailing 8 h"
+                subtitle="Objects on floor, trailing 8 hours"
                 icon={<Users className="h-3.5 w-3.5" />}
               />
               {data.isLoading ? <ChartSkeleton /> : <OccupancyChart data={data.occupancy} />}
@@ -258,7 +258,7 @@ export function DashboardPage() {
             <Panel>
               <PanelHeader
                 title="Average Dwell Time"
-                subtitle="Mean and peak, by class"
+                subtitle="Mean and peak, by object class"
                 icon={<Clock className="h-3.5 w-3.5" />}
               />
               {data.isLoading ? <ChartSkeleton /> : <DwellChart data={data.dwell} />}
@@ -314,7 +314,7 @@ export function DashboardPage() {
 
         <p className="flex items-center gap-1.5 px-0.5 pb-2 text-2xs text-ink-ghost">
           <HardHat className="h-3 w-3" />
-          Charts derive from the most recent {200} records. Totals shown on tiles are exact
+          Charts derive from the most recent {ANALYSIS_SAMPLE_SIZE} records. Totals shown on tiles are exact
           counts reported by the API.
         </p>
       </div>

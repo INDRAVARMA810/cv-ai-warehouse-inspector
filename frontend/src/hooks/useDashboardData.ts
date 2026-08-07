@@ -23,7 +23,7 @@ import { useTracks } from './useTracks';
 import { useViolations } from './useViolations';
 
 /** Sample size backing the derived charts. */
-const SAMPLE = 200;
+export const ANALYSIS_SAMPLE_SIZE = 200;
 
 interface DashboardData {
   summary: AlertSummary;
@@ -70,7 +70,7 @@ interface DashboardData {
  */
 export function useDashboardData(refreshMs = 20_000): DashboardData {
   const alertsQuery = useAlerts(
-    { page: 1, page_size: SAMPLE, sort_by: 'occurred_at', order: 'desc' },
+    { page: 1, page_size: ANALYSIS_SAMPLE_SIZE, sort_by: 'occurred_at', order: 'desc' },
     refreshMs,
   );
   const activeQuery = useAlerts(
@@ -79,11 +79,11 @@ export function useDashboardData(refreshMs = 20_000): DashboardData {
   );
   const tracksQuery = useTracks({
     page: 1,
-    page_size: SAMPLE,
+    page_size: ANALYSIS_SAMPLE_SIZE,
     sort_by: 'first_seen',
     order: 'desc',
   });
-  const violationsQuery = useViolations({ page: 1, page_size: SAMPLE });
+  const violationsQuery = useViolations({ page: 1, page_size: ANALYSIS_SAMPLE_SIZE });
   const eventsQuery = useSystemEvents(
     { page: 1, page_size: 8, sort_by: 'occurred_at', order: 'desc' },
     refreshMs,
