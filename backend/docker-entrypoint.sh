@@ -60,8 +60,12 @@ fi
 # ---------------------------------------------------------------------
 # Create any missing tables.
 #
-# `initialize()` only adds tables that do not exist; it never alters an
-# existing one. Schema evolution still needs a real migration tool.
+# `initialize()` creates tables that do not exist, then applies one
+# narrow, additive, idempotent upgrade (adding track_records.run_id to
+# a database that predates it, if needed — see
+# app/database/migrations.py::upgrade_track_run_id_column). It does not
+# alter existing tables beyond that one known case. Schema evolution
+# still needs a real migration tool.
 # ---------------------------------------------------------------------
 if [ "${RUN_MIGRATIONS}" = "true" ]; then
     log "Ensuring database schema..."

@@ -987,12 +987,16 @@ class TrackRepository(BaseRepository[TrackRecord]):
     }
 
     @staticmethod
-    def to_values(tracked_object: Any) -> Dict[str, Any]:
+    def to_values(tracked_object: Any, run_id: str) -> Dict[str, Any]:
         """Map a domain tracked object onto column values.
 
         Args:
             tracked_object: An object shaped like
                 :class:`app.tracking.tracked_object.TrackedObject`.
+            run_id: Identity of the pipeline run this observation came
+                from. See :class:`TrackRecord` for why this is required
+                — ``track_id`` alone is not a stable identity across
+                pipeline restarts.
 
         Returns:
             Column values for the new row.
@@ -1003,6 +1007,7 @@ class TrackRepository(BaseRepository[TrackRecord]):
         )
 
         return {
+            "run_id": str(run_id),
             "track_id": int(tracked_object.track_id),
             "class_id": getattr(tracked_object, "class_id", None),
             "class_name": str(tracked_object.class_name),
@@ -1015,21 +1020,33 @@ class TrackRepository(BaseRepository[TrackRecord]):
             "bounding_box": _box_to_json(coordinates),
         }
 
-    def save_domain(self, tracked_object: Any) -> TrackRecord:
+    def save_domain(self, tracked_object: Any, run_id: str) -> TrackRecord:
         """Insert or extend the record for a tracked object.
 
         A track observed across many frames should produce one row
         describing its whole appearance, not one row per frame — so an
         existing record for the same identity is extended.
 
+        ``run_id`` is a required part of that identity, not an optional
+        extra: ByteTrack restarts its ``track_id`` counter from 1 on
+        every pipeline start, so looking up by ``track_id`` alone would
+        match — and silently overwrite — an unrelated object's row from
+        a previous run. The lookup below is always scoped to both
+        columns together; there is deliberately no code path here that
+        can match on ``track_id`` alone.
+
         Args:
             tracked_object: The tracked object to persist.
+            run_id: Identity of the current pipeline run. Callers must
+                mint one value per pipeline/tracker lifetime (see
+                :class:`~app.streaming.persistence.LivePersistence`) and
+                reuse it for every track observed during that run.
 
         Returns:
             The persisted record.
         """
-        values = self.to_values(tracked_object)
-        existing = self.first(track_id=values["track_id"])
+        values = self.to_values(tracked_object, run_id)
+        existing = self.first(track_id=values["track_id"], run_id=values["run_id"])
 
         if existing is None:
             return self.create(**values)

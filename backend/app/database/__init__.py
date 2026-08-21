@@ -34,6 +34,7 @@ from app.database.migrations import (
     migration_guidance,
     reset_schema,
     schema_is_ready,
+    upgrade_track_run_id_column,
     verify_schema,
 )
 from app.database.models import (
@@ -106,6 +107,7 @@ __all__ = [
     "verify_schema",
     "schema_is_ready",
     "migration_guidance",
+    "upgrade_track_run_id_column",
     # Seeding
     "seed",
     "seed_session",

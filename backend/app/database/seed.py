@@ -180,6 +180,7 @@ def _demo_tracks() -> List[Dict[str, object]]:
     return [
         {
             "track_id": 12,
+            "run_id": "demo-seed",
             "class_id": 0,
             "class_name": "person",
             "confidence": 0.91,
@@ -192,6 +193,7 @@ def _demo_tracks() -> List[Dict[str, object]]:
         },
         {
             "track_id": 21,
+            "run_id": "demo-seed",
             "class_id": 0,
             "class_name": "person",
             "confidence": 0.88,
@@ -204,6 +206,7 @@ def _demo_tracks() -> List[Dict[str, object]]:
         },
         {
             "track_id": 22,
+            "run_id": "demo-seed",
             "class_id": 7,
             "class_name": "forklift",
             "confidence": 0.79,

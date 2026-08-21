@@ -18,6 +18,7 @@ something new to write — not on every frame at capture frame rate.
 """
 
 import time
+import uuid
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.alerts.alert import Alert
@@ -41,10 +42,22 @@ class LivePersistence:
       throttled the same way; the first sighting of a track is always
       written immediately.
 
+    Each instance mints its own ``run_id`` and stamps every track it
+    writes with it. This matters because ByteTrack's ``track_id``
+    restarts from 1 on every pipeline start — a bare numeric ID is not
+    a stable identity across restarts. One :class:`LivePersistence`
+    instance is constructed per pipeline run (see
+    :meth:`app.streaming.stream.VideoStream._run`), so one ``run_id``
+    per instance exactly matches one tracker lifetime, and two objects
+    that both happen to be "track #1" in different runs can never be
+    merged into the same database row.
+
     Attributes:
         alert_manager: Converts rule violations into durable alerts.
         sync_interval: Minimum seconds between two persisted updates of
             the same open incident or track.
+        run_id: Identity of the current pipeline run, stamped on every
+            track this instance persists.
     """
 
     def __init__(
@@ -62,6 +75,7 @@ class LivePersistence:
         """
         self.alert_manager = alert_manager or build_default_manager()
         self.sync_interval = sync_interval
+        self.run_id = str(uuid.uuid4())
         self._last_synced: Dict[str, float] = {}
 
     def record(self, rule_result: Any, tracked_objects: Sequence[Any]) -> None:
@@ -97,7 +111,7 @@ class LivePersistence:
                 repos = RepositoryBundle.for_session(session)
 
                 for tracked_object in tracks_due:
-                    repos.tracks.save_domain(tracked_object)
+                    repos.tracks.save_domain(tracked_object, run_id=self.run_id)
                     self._last_synced[self._track_key(tracked_object)] = now
 
                 synced_alert_ids = set()
@@ -163,10 +177,14 @@ class LivePersistence:
         return f"track:{tracked_object.track_id}"
 
     def reset(self) -> None:
-        """Discard alert-engine and debounce state.
+        """Discard alert-engine and debounce state, and start a new run.
 
         Call when a stream restarts on a new source, so incidents from
-        the previous run do not carry over.
+        the previous run do not carry over. ``run_id`` is rotated here
+        too: a restart is exactly the boundary at which ByteTrack's
+        ``track_id`` counter also restarts from 1, so the two must move
+        together or tracks from the old and new run could collide.
         """
         self.alert_manager.reset()
         self._last_synced.clear()
+        self.run_id = str(uuid.uuid4())

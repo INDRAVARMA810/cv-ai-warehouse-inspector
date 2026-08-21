@@ -33,6 +33,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -234,14 +235,31 @@ class TrackRecord(Base, TimestampMixin):
     One row per identity per appearance, summarizing where and for how
     long an object was observed. This supports dwell-time analysis and
     incident reconstruction without storing every frame.
+
+    ``track_id`` alone is **not** a stable identity: ByteTrack restarts
+    its counter from 1 every time the tracker is (re)constructed, which
+    happens on every pipeline start. ``run_id`` disambiguates which
+    pipeline run a given ``track_id`` belongs to, so two unrelated
+    objects that both happen to be "track #1" in different runs are
+    never merged into the same row. The two together —
+    ``UNIQUE(run_id, track_id)`` — are the row's real identity.
     """
 
     __tablename__ = "track_records"
     __table_args__ = (
         Index("ix_track_records_class_first_seen", "class_name", "first_seen"),
+        UniqueConstraint(
+            "run_id", "track_id", name="uq_track_records_run_id_track_id"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    #: Identifies the pipeline run (one per tracker instance) this
+    #: track ID was assigned within. Minted once per
+    #: :class:`~app.streaming.persistence.LivePersistence` instance —
+    #: see that module for exactly when a new value is generated.
+    run_id: Mapped[str] = mapped_column(String(36), index=True)
 
     track_id: Mapped[int] = mapped_column(Integer, index=True)
     class_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -266,8 +284,9 @@ class TrackRecord(Base, TimestampMixin):
     def __repr__(self) -> str:
         """Return a concise developer-facing representation."""
         return (
-            f"TrackRecord(id={self.id}, track_id={self.track_id}, "
-            f"class={self.class_name!r}, observations={self.observation_count})"
+            f"TrackRecord(id={self.id}, run_id={self.run_id[:8]!r}, "
+            f"track_id={self.track_id}, class={self.class_name!r}, "
+            f"observations={self.observation_count})"
         )
 
 
